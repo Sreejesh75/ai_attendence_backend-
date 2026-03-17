@@ -53,8 +53,9 @@ exports.getAttendanceReport = async (req, res) => {
     // Get all workers
     const allWorkers = await Worker.find();
     
-    // Get attendance records for the target date
-    const attendanceRecords = await Attendance.find({ date: targetDate }).populate('workerId', 'name photoUrl');
+    // Get attendance records for the target date and filter out null workers (case where worker was deleted)
+    const rawRecords = await Attendance.find({ date: targetDate }).populate('workerId', 'name photoUrl');
+    const attendanceRecords = rawRecords.filter(record => record.workerId !== null);
 
     const presentWorkerIds = attendanceRecords.map(record => record.workerId._id.toString());
 

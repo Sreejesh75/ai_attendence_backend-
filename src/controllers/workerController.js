@@ -70,3 +70,52 @@ exports.getWorkerById = async (req, res) => {
     res.status(500).json({ message: 'Error finding worker', error: error.message });
   }
 };
+
+exports.updateWorker = async (req, res) => {
+  try {
+    const { name, jobRole, place, contactNumber, dailyWage } = req.body;
+    let updateData = { name, jobRole, place, contactNumber, dailyWage };
+
+    if (req.file) {
+      const uploadToCloudinary = (buffer) => {
+        return new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: 'attendance_workers' },
+            (error, result) => {
+              if (result) resolve(result.secure_url);
+              else reject(error);
+            }
+          );
+          streamifier.createReadStream(buffer).pipe(stream);
+        });
+      };
+      updateData.photoUrl = await uploadToCloudinary(req.file.buffer);
+    }
+
+    const updatedWorker = await Worker.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true }
+    );
+
+    if (!updatedWorker) {
+      return res.status(404).json({ message: 'Worker not found' });
+    }
+
+    res.status(200).json({ message: 'Worker updated successfully', worker: updatedWorker });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating worker', error: error.message });
+  }
+};
+
+exports.deleteWorker = async (req, res) => {
+  try {
+    const deletedWorker = await Worker.findByIdAndDelete(req.params.id);
+    if (!deletedWorker) {
+      return res.status(404).json({ message: 'Worker not found' });
+    }
+    res.status(200).json({ message: 'Worker deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting worker', error: error.message });
+  }
+};

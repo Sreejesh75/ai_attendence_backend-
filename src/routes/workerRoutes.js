@@ -113,5 +113,7 @@ router.get('/:id', workerController.getWorkerById);
  *         description: Created successfully
  */
 router.post('/', upload.single('photo'), workerController.registerWorker);
+router.put('/:id', upload.single('photo'), workerController.updateWorker);
+router.delete('/:id', workerController.deleteWorker);
 
 module.exports = router;

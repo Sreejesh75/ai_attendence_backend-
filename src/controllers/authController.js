@@ -21,7 +21,8 @@ exports.requestOtp = async (req, res) => {
       user = new User({
         phoneNumber,
         otp: generatedOtp,
-        otpExpires
+        otpExpires,
+        role: 'Admin' // Explicitly set capitalized role to match enum
       });
     } else {
       user.otp = generatedOtp;

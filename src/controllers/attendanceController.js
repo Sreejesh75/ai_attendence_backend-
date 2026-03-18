@@ -10,9 +10,9 @@ exports.markAttendance = async (req, res) => {
       return res.status(400).json({ message: 'workerId is required' });
     }
 
-    const worker = await Worker.findById(workerId);
+    const worker = await Worker.findOne({ _id: workerId, adminId: req.user.id });
     if (!worker) {
-      return res.status(404).json({ message: 'Worker not found' });
+      return res.status(404).json({ message: 'Worker not found or you don\'t have permission to mark attendance for this worker' });
     }
 
     // Standardize date and time (IST - UTC+5:30)
@@ -29,7 +29,8 @@ exports.markAttendance = async (req, res) => {
     const newAttendance = new Attendance({
       workerId,
       date,
-      time
+      time,
+      adminId: req.user.id
     });
 
     await newAttendance.save();
@@ -50,11 +51,11 @@ exports.getAttendanceReport = async (req, res) => {
     const { date } = req.query; // format YYYY-MM-DD
     const targetDate = date || dayjs().utcOffset(330).format('YYYY-MM-DD');
 
-    // Get all workers
-    const allWorkers = await Worker.find();
+    // Get only workers belonging to this admin
+    const allWorkers = await Worker.find({ adminId: req.user.id });
     
-    // Get attendance records for the target date and filter out null workers (case where worker was deleted)
-    const rawRecords = await Attendance.find({ date: targetDate }).populate('workerId', 'name photoUrl');
+    // Get attendance records for the target date belonging to this admin
+    const rawRecords = await Attendance.find({ date: targetDate, adminId: req.user.id }).populate('workerId', 'name photoUrl');
     const attendanceRecords = rawRecords.filter(record => record.workerId !== null);
 
     const presentWorkerIds = attendanceRecords.map(record => record.workerId._id.toString());

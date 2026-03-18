@@ -40,7 +40,8 @@ exports.registerWorker = async (req, res) => {
       jobRole,
       place,
       contactNumber,
-      dailyWage
+      dailyWage,
+      adminId: req.user.id // Tie worker to the person who created them
     });
 
     await newWorker.save();
@@ -52,16 +53,16 @@ exports.registerWorker = async (req, res) => {
 
 exports.getAllWorkers = async (req, res) => {
   try {
-    const workers = await Worker.find().sort({ createdAt: -1 });
+    const workers = await Worker.find({ adminId: req.user.id }).sort({ createdAt: -1 });
     res.status(200).json(workers);
   } catch (error) {
-    res.status(500).json({ message: 'Error formatting workers', error: error.message });
+    res.status(500).json({ message: 'Error fetching workers', error: error.message });
   }
 };
 
 exports.getWorkerById = async (req, res) => {
   try {
-    const worker = await Worker.findById(req.params.id);
+    const worker = await Worker.findOne({ _id: req.params.id, adminId: req.user.id });
     if (!worker) {
       return res.status(404).json({ message: 'Worker not found' });
     }
@@ -77,6 +78,7 @@ exports.updateWorker = async (req, res) => {
     let updateData = { name, jobRole, place, contactNumber, dailyWage };
 
     if (req.file) {
+      // (upload logic removed for brevity but must be kept in the real replacement)
       const uploadToCloudinary = (buffer) => {
         return new Promise((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
@@ -92,14 +94,14 @@ exports.updateWorker = async (req, res) => {
       updateData.photoUrl = await uploadToCloudinary(req.file.buffer);
     }
 
-    const updatedWorker = await Worker.findByIdAndUpdate(
-      req.params.id,
+    const updatedWorker = await Worker.findOneAndUpdate(
+      { _id: req.params.id, adminId: req.user.id },
       { $set: updateData },
       { new: true }
     );
 
     if (!updatedWorker) {
-      return res.status(404).json({ message: 'Worker not found' });
+      return res.status(404).json({ message: 'Worker not found or you don\'t have permission' });
     }
 
     res.status(200).json({ message: 'Worker updated successfully', worker: updatedWorker });
@@ -110,7 +112,7 @@ exports.updateWorker = async (req, res) => {
 
 exports.deleteWorker = async (req, res) => {
   try {
-    const deletedWorker = await Worker.findByIdAndDelete(req.params.id);
+    const deletedWorker = await Worker.findOneAndDelete({ _id: req.params.id, adminId: req.user.id });
     if (!deletedWorker) {
       return res.status(404).json({ message: 'Worker not found' });
     }

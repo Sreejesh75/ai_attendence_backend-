@@ -82,4 +82,11 @@ router.post('/verify-and-set-password', authController.verifyAndSetPassword);
  */
 router.post('/login', authController.login);
 
+// Profile Management (Protected Routes)
+const authMiddleware = require('../middlewares/authMiddleware');
+
+router.get('/profile', authMiddleware, authController.getProfile);
+router.put('/profile', authMiddleware, authController.updateProfile);
+router.delete('/profile', authMiddleware, authController.deleteAccount);
+
 module.exports = router;

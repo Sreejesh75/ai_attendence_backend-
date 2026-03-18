@@ -128,3 +128,56 @@ exports.login = async (req, res) => {
     res.status(500).json({ message: 'Error logging in', error: error.message });
   }
 };
+
+// 4. Get Current User Profile
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching profile', error: error.message });
+  }
+};
+
+// 5. Update Current User Profile
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, role } = req.body;
+    
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (name) user.name = name;
+    if (role) user.role = role;
+
+    await user.save();
+    
+    const updatedUser = user.toObject();
+    delete updatedUser.password;
+    
+    res.json({
+      message: 'Profile updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating profile', error: error.message });
+  }
+};
+
+// 6. Delete Current User Account
+exports.deleteAccount = async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json({ message: 'User account deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting account', error: error.message });
+  }
+};

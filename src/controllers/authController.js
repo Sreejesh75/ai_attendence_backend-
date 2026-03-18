@@ -2,185 +2,170 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// 1. Request OTP using phone number
+/**
+ * AUTHENTICATION CONTROLLER
+ * Handles user lifecycle: OTP, Registration, Login, and Profile Management.
+ */
+
+// --- Constants & Helpers ---
+const JWT_EXPIRES = '7d';
+const OTP_EXPIRY_MINUTES = 10;
+
+/**
+ * Generates a standard JWT for a user
+ */
+const generateToken = (user) => {
+  const secret = process.env.JWT_SECRET || 'fallback_secret_key';
+  return jwt.sign({ id: user._id, role: user.role }, secret, { expiresIn: JWT_EXPIRES });
+};
+
+// --- Core Auth Logic ---
+
+/**
+ * @desc    Request a 4-digit OTP via phone
+ * @route   POST /api/auth/request-otp
+ */
 exports.requestOtp = async (req, res) => {
   try {
     const { phoneNumber } = req.body;
-    
-    if (!phoneNumber) {
-      return res.status(400).json({ message: 'Phone number is required' });
-    }
+    if (!phoneNumber) return res.status(400).json({ message: 'Phone number is required' });
 
-    // Generate a 4-digit OTP
-    const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+    // Generate Verification Data
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const expires = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
+    // Upsert User (Create if not exists)
     let user = await User.findOne({ phoneNumber });
-    
     if (!user) {
-      user = new User({
-        phoneNumber,
-        otp: generatedOtp,
-        otpExpires,
-        role: 'Admin' // Explicitly set capitalized role to match enum
-      });
+      user = new User({ phoneNumber, otp, otpExpires: expires, role: 'Admin' });
     } else {
-      user.otp = generatedOtp;
-      user.otpExpires = otpExpires;
+      user.otp = otp;
+      user.otpExpires = expires;
     }
 
     await user.save();
 
-    // In a real production app, you would send this via Twilio or an SMS gateway.
-    // For now, we return it in the response so you can test it easily!
+    // Response (Testing mode: return OTP in body)
     res.status(200).json({ 
       message: 'OTP sent successfully', 
-      otpForTesting: generatedOtp // Exposing for ease of development!
+      otpForTesting: otp 
     });
   } catch (error) {
-    res.status(500).json({ message: 'Error generating OTP', error: error.message });
+    res.status(500).json({ message: 'Internal Server Error during OTP generation', error: error.message });
   }
 };
 
-// 2. Verify OTP and Set Password
+/**
+ * @desc    Verify OTP and establish account password
+ * @route   POST /api/auth/verify-and-set-password
+ */
 exports.verifyAndSetPassword = async (req, res) => {
   try {
     const { phoneNumber, otp, password } = req.body;
-
     if (!phoneNumber || !otp || !password) {
-      return res.status(400).json({ message: 'Phone number, OTP, and password are required' });
+      return res.status(400).json({ message: 'All fields (phone, OTP, password) are required' });
     }
 
     const user = await User.findOne({ phoneNumber });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    
+    // Security Checks
+    if (user.otp !== otp) return res.status(400).json({ message: 'Invalid OTP' });
+    if (user.otpExpires < new Date()) return res.status(400).json({ message: 'OTP expired' });
 
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (user.otp !== otp) {
-      return res.status(400).json({ message: 'Invalid OTP' });
-    }
-
-    if (user.otpExpires < new Date()) {
-      return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
-    }
-
-    // Encrypt the new password
+    // Hash Password & Clean OTP
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
-    
-    // Clear the OTP fields
     user.otp = undefined;
     user.otpExpires = undefined;
 
     await user.save();
 
-    // Automatically generate a token so they are logged in right after setting the password
-    const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key';
-    const token = jwt.sign({ id: user._id, role: user.role }, jwtSecret, { expiresIn: '7d' });
-
     res.status(200).json({
-      message: 'Password set successfully. You can now use the app.',
-      token,
-      user: {
-        id: user._id,
-        phoneNumber: user.phoneNumber,
-        name: user.name,
-        role: user.role
-      }
+      message: 'Account secured. Welcome!',
+      token: generateToken(user),
+      user: { id: user._id, phoneNumber: user.phoneNumber, name: user.name, role: user.role }
     });
-
   } catch (error) {
-    res.status(500).json({ message: 'Error setting password', error: error.message });
+    res.status(500).json({ message: 'Failed to verify account', error: error.message });
   }
 };
 
-// 3. Login using phone number and password
+/**
+ * @desc    Authenticate existing user
+ * @route   POST /api/auth/login
+ */
 exports.login = async (req, res) => {
   try {
     const { phoneNumber, password } = req.body;
-
-    if (!phoneNumber || !password) {
-      return res.status(400).json({ message: 'Phone number and password are required' });
-    }
+    if (!phoneNumber || !password) return res.status(400).json({ message: 'Credentials missing' });
 
     const user = await User.findOne({ phoneNumber });
-    if (!user || !user.password) {
-      return res.status(400).json({ message: 'Invalid credentials or password not set' });
-    }
+    if (!user || !user.password) return res.status(400).json({ message: 'Invalid phone or password' });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
-
-    const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key';
-    const token = jwt.sign({ id: user._id, role: user.role }, jwtSecret, { expiresIn: '7d' });
+    if (!isMatch) return res.status(400).json({ message: 'Invalid phone or password' });
 
     res.status(200).json({
-      message: 'Login successful',
-      token,
-      user: {
-        id: user._id,
-        phoneNumber: user.phoneNumber,
-        name: user.name,
-        role: user.role
-      }
+      message: 'Authentication successful',
+      token: generateToken(user),
+      user: { id: user._id, phoneNumber: user.phoneNumber, name: user.name, role: user.role }
     });
   } catch (error) {
-    res.status(500).json({ message: 'Error logging in', error: error.message });
+    res.status(500).json({ message: 'Login service unavailable', error: error.message });
   }
 };
 
-// 4. Get Current User Profile
+// --- Profile Management ---
+
+/**
+ * @desc    Get authenticated user details
+ * @route   GET /api/auth/profile
+ */
 exports.getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'Profile not found' });
     res.json(user);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching profile', error: error.message });
+    res.status(500).json({ message: 'Failed to fetch profile', error: error.message });
   }
 };
 
-// 5. Update Current User Profile
+/**
+ * @desc    Submit updates to user name/role
+ * @route   PUT /api/auth/profile
+ */
 exports.updateProfile = async (req, res) => {
   try {
     const { name, role } = req.body;
-    
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     if (name) user.name = name;
     if (role) user.role = role;
 
     await user.save();
     
-    const updatedUser = user.toObject();
-    delete updatedUser.password;
+    const profile = user.toObject();
+    delete profile.password;
     
-    res.json({
-      message: 'Profile updated successfully',
-      user: updatedUser
-    });
+    res.json({ message: 'Profile updated', user: profile });
   } catch (error) {
-    res.status(500).json({ message: 'Error updating profile', error: error.message });
+    res.status(500).json({ message: 'Profile update failed', error: error.message });
   }
 };
 
-// 6. Delete Current User Account
+/**
+ * @desc    Remove account and all associated data
+ * @route   DELETE /api/auth/profile
+ */
 exports.deleteAccount = async (req, res) => {
   try {
     const user = await User.findByIdAndDelete(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    res.json({ message: 'User account deleted successfully' });
+    if (!user) return res.status(404).json({ message: 'Account not found' });
+    res.json({ message: 'Account permanently removed' });
   } catch (error) {
-    res.status(500).json({ message: 'Error deleting account', error: error.message });
+    res.status(500).json({ message: 'Accout deletion failed', error: error.message });
   }
 };

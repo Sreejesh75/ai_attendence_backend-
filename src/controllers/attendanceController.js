@@ -15,8 +15,8 @@ exports.markAttendance = async (req, res) => {
       return res.status(404).json({ message: 'Worker not found' });
     }
 
-    // Standardize date and time
-    const now = dayjs();
+    // Standardize date and time (IST - UTC+5:30)
+    const now = dayjs().utcOffset(330);
     const date = now.format('YYYY-MM-DD');
     const time = now.format('HH:mm:ss');
 
@@ -48,7 +48,7 @@ exports.markAttendance = async (req, res) => {
 exports.getAttendanceReport = async (req, res) => {
   try {
     const { date } = req.query; // format YYYY-MM-DD
-    const targetDate = date || dayjs().format('YYYY-MM-DD');
+    const targetDate = date || dayjs().utcOffset(330).format('YYYY-MM-DD');
 
     // Get all workers
     const allWorkers = await Worker.find();

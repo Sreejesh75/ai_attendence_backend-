@@ -18,7 +18,7 @@ exports.markAttendance = async (req, res) => {
     // Standardize date and time (IST - UTC+5:30)
     const now = dayjs().utcOffset(330);
     const date = now.format('YYYY-MM-DD');
-    const time = now.format('HH:mm:ss');
+    const time = now.format('hh:mm A'); // e.g., 09:15 AM
 
     // Check if attendance already marked for today
     const existingRecord = await Attendance.findOne({ workerId, date });

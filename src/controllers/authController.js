@@ -85,6 +85,7 @@ exports.verifyAndSetPassword = async (req, res) => {
       user: {
         id: user._id,
         phoneNumber: user.phoneNumber,
+        name: user.name,
         role: user.role
       }
     });
@@ -122,6 +123,7 @@ exports.login = async (req, res) => {
       user: {
         id: user._id,
         phoneNumber: user.phoneNumber,
+        name: user.name,
         role: user.role
       }
     });

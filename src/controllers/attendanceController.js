@@ -97,3 +97,63 @@ exports.getAttendanceReport = async (req, res) => {
     res.status(500).json({ message: 'Error generating report', error: error.message });
   }
 };
+
+exports.getDashboardSummary = async (req, res) => {
+  try {
+    const adminId = req.user.id;
+    const now = dayjs().utcOffset(330);
+    const todayStr = now.format('YYYY-MM-DD');
+
+    // 1. Get Today's Stats
+    const allWorkers = await Worker.find({ adminId });
+    const todayRecords = await Attendance.find({ date: todayStr, adminId }).populate('workerId', 'dailyWage');
+    
+    const totalWorkers = allWorkers.length;
+    const presentToday = todayRecords.length;
+    let totalEstimatedWage = 0;
+    
+    todayRecords.forEach(record => {
+      if (record.workerId && record.workerId.dailyWage) {
+        totalEstimatedWage += record.workerId.dailyWage;
+      }
+    });
+
+    // 2. Get Last 7 Days Trends
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = now.subtract(i, 'day').format('YYYY-MM-DD');
+      const count = await Attendance.countDocuments({ date: d, adminId });
+      last7Days.push({
+        date: d,
+        day: now.subtract(i, 'day').format('ddd'),
+        count
+      });
+    }
+
+    // 3. Recent Activity (Last 5 scans)
+    const recentActivity = await Attendance.find({ adminId })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('workerId', 'name photoUrl jobRole');
+
+    res.status(200).json({
+      today: {
+        totalWorkers,
+        presentCount: presentToday,
+        totalEstimatedWage,
+      },
+      trends: last7Days,
+      recentActivity: recentActivity.map(record => ({
+        id: record._id,
+        workerName: record.workerId ? record.workerId.name : 'Unknown',
+        photoUrl: record.workerId ? record.workerId.photoUrl : null,
+        jobRole: record.workerId ? record.workerId.jobRole : 'Worker',
+        time: record.time,
+        date: record.date
+      }))
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching dashboard summary', error: error.message });
+  }
+};

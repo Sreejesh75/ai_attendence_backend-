@@ -68,5 +68,6 @@ router.post('/', attendanceController.markAttendance);
  *         description: Attendance report with list of presents and absents
  */
 router.get('/report', attendanceController.getAttendanceReport);
+router.get('/summary', attendanceController.getDashboardSummary);
 
 module.exports = router;

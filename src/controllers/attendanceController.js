@@ -1,6 +1,8 @@
 const Attendance = require('../models/Attendance');
 const Worker = require('../models/Worker');
 const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+dayjs.extend(utc);
 
 exports.markAttendance = async (req, res) => {
   try {
